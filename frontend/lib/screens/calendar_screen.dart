@@ -1,28 +1,24 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// Import komponen navigasi dan tema
 import 'top_navigation.dart';
 import 'bot_navigation.dart';
-import 'tema_screen.dart'; // Wajib diimport untuk mengambil TemaData
+import 'tema_screen.dart';
 
-import '../services/api_service.dart'; // Import ApiService
+import '../services/api_service.dart';
 
-// ==========================================
-// SHARED UTILS
-// ==========================================
 class TaskUtils {
   static Color colorForPriority(String priority) {
     switch (priority.toUpperCase()) {
       case 'TINGGI':
       case 'HIGH':
-        return const Color(0xFFEF4444); // Merah
+        return const Color(0xFFEF4444);
       case 'SEDANG':
       case 'MEDIUM':
-        return const Color(0xFFF59E0B); // Kuning/Orange
+        return const Color(0xFFF59E0B);
       case 'RENDAH':
       case 'LOW':
-        return const Color(0xFF10B981); // Hijau
+        return const Color(0xFF10B981);
       default:
         return Colors.grey;
     }
@@ -32,9 +28,6 @@ class TaskUtils {
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 }
 
-// ==========================================
-// CALENDAR SCREEN
-// ==========================================
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
 
@@ -49,6 +42,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Map<String, List<Map<String, dynamic>>> _tasksByDate = {};
   List<Map<String, dynamic>> _allTasks = [];
   bool _isLoading = false;
+  bool _hasError = false;
   bool _showAllEvents = false;
 
   @override
@@ -58,7 +52,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _fetchTasks() async {
-    setState(() => _isLoading = true);
+    setState(() { _isLoading = true; _hasError = false; });
     try {
       final tasks = await ApiService.getTasks();
       final Map<String, List<Map<String, dynamic>>> map = {};
@@ -78,7 +72,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _allTasks = allList;
       });
     } catch (e) {
-      // Handle error
+      if (mounted) {
+        setState(() => _hasError = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal memuat data kalender. Periksa koneksi internet.')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -101,7 +100,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return ListenableBuilder(
       listenable: TemaData(),
       builder: (context, child) {
-        final t = TemaData(); // Ambil instance tema aktif
+        final t = TemaData();
 
         return Scaffold(
           backgroundColor: t.background,
@@ -123,9 +122,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // ==========================================
-                // CARD KALENDER (DENGAN GRADASI PILIHAN ANDA)
-                // ==========================================
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
@@ -135,32 +131,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     border: Border.all(color: t.border),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(t.isDark ? 0.30 : 0.03),
+                        color: Colors.black
+                            .withValues(alpha: t.isDark ? 0.30 : 0.03),
                         blurRadius: 15,
                         offset: const Offset(0, 5),
                       ),
                     ],
-                    // Penerapan Gradasi Sesuai Request Anda: Bottom Right ke Center
                     gradient: t.isDark
                         ? LinearGradient(
                             begin: Alignment
-                                .bottomRight, // Mulai dari pojok kanan bawah
-                            end: Alignment.center, // Menuju ke tengah kartu
+                                .bottomRight,
+                            end: Alignment.center,
                             colors: [t.surfaceVariant, t.surface],
                           )
                         : const LinearGradient(
                             begin: Alignment
-                                .bottomRight, // Mulai dari pojok kanan bawah
-                            end: Alignment.center, // Menuju ke tengah kartu
+                                .bottomRight,
+                            end: Alignment.center,
                             colors: [
                               Color(0xffeff9ff),
                               Colors.white
-                            ], // Biru faint khas login screen Anda
+                            ],
                           ),
                   ),
                   child: Column(
                     children: [
-                      // Header Bulan & Navigasi
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -183,34 +178,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      // Label Hari (SUN, MON, ...)
                       Row(
-                        children: [
-                          'SUN',
-                          'MON',
-                          'TUE',
-                          'WED',
-                          'THU',
-                          'FRI',
-                          'SAT'
-                        ]
-                            .map((d) => Expanded(
-                                  child: Center(
-                                    child: Text(
-                                      d,
-                                      style: GoogleFonts.montserrat(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: t.textSecondary.withOpacity(0.6),
+                        children:
+                            ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+                                .map((d) => Expanded(
+                                      child: Center(
+                                        child: Text(
+                                          d,
+                                          style: GoogleFonts.montserrat(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: t.textSecondary
+                                                .withValues(alpha: 0.6),
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                ))
-                            .toList(),
+                                    ))
+                                .toList(),
                       ),
                       const SizedBox(height: 12),
 
-                      // Grid Tanggal
                       _buildCalendarGrid(t),
                     ],
                   ),
@@ -218,9 +205,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
                 const SizedBox(height: 24),
 
-                // ==========================================
-                // PANEL DETAIL HARI
-                // ==========================================
                 if (_selectedDay != null) _buildDayPanel(_selectedDay!, t),
               ],
             ),
@@ -231,9 +215,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ==========================================
-  // GRID KALENDER BUILDER
-  // ==========================================
   Widget _buildCalendarGrid(TemaData t) {
     final daysInMonth = _daysInMonth(_focusedMonth);
     final firstWeekday = _firstWeekdayOfMonth(_focusedMonth);
@@ -342,12 +323,32 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ==========================================
-  // PANEL DETAIL HARI / EVENTS
-  // ==========================================
   Widget _buildDayPanel(DateTime day, TemaData t) {
     if (_isLoading) {
       return Center(child: CircularProgressIndicator(color: t.accent));
+    }
+    if (_hasError) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.wifi_off_rounded, color: t.textSecondary, size: 36),
+            const SizedBox(height: 12),
+            Text('Gagal memuat task',
+                style: GoogleFonts.montserrat(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: t.textSecondary)),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _fetchTasks,
+              child: Text('Coba lagi',
+                  style: GoogleFonts.montserrat(
+                      color: t.accent, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
     }
     final tasks = _showAllEvents ? _allTasks : _tasksForDay(day);
 
@@ -361,7 +362,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 1. SEGMENTED CONTROL
           Padding(
             padding: const EdgeInsets.all(16),
             child: Container(
@@ -378,15 +378,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
-                          color: _showAllEvents ? const Color(0xFF1E40AF) : Colors.transparent,
+                          color: _showAllEvents
+                              ? const Color(0xFF1E40AF)
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Center(
-                          child: Text('All Events', style: GoogleFonts.montserrat(
-                            fontWeight: FontWeight.bold,
-                            color: _showAllEvents ? Colors.white : t.textSecondary,
-                            fontSize: 13,
-                          )),
+                          child: Text('Semua Task',
+                              style: GoogleFonts.montserrat(
+                                fontWeight: FontWeight.bold,
+                                color: _showAllEvents
+                                    ? Colors.white
+                                    : t.textSecondary,
+                                fontSize: 13,
+                              )),
                         ),
                       ),
                     ),
@@ -397,15 +402,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
-                          color: !_showAllEvents ? const Color(0xFF1E40AF) : Colors.transparent,
+                          color: !_showAllEvents
+                              ? const Color(0xFF1E40AF)
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Center(
-                          child: Text('Selected', style: GoogleFonts.montserrat(
-                            fontWeight: FontWeight.bold,
-                            color: !_showAllEvents ? Colors.white : t.textSecondary,
-                            fontSize: 13,
-                          )),
+                          child: Text('Terpilih',
+                              style: GoogleFonts.montserrat(
+                                fontWeight: FontWeight.bold,
+                                color: !_showAllEvents
+                                    ? Colors.white
+                                    : t.textSecondary,
+                                fontSize: 13,
+                              )),
                         ),
                       ),
                     ),
@@ -415,15 +425,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ),
           Divider(height: 1, color: t.border),
-          
-          // 2. CONTENT (TANGGAL & DAFTAR TASK)
+
           Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _showAllEvents ? 'Semua Task' : '${_monthName(day.month)} ${day.day}, ${day.year}',
+                  _showAllEvents
+                      ? 'Semua Task'
+                      : '${_monthName(day.month)} ${day.day}, ${day.year}',
                   style: GoogleFonts.montserrat(
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
@@ -439,7 +450,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ),
 
-          // 3. PRIORITY LEGEND
           Divider(height: 1, color: t.border),
           Padding(
             padding: const EdgeInsets.all(20),
@@ -460,7 +470,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   children: [
                     _legendItem('High', TaskUtils.colorForPriority('high'), t),
                     const SizedBox(width: 16),
-                    _legendItem('Medium', TaskUtils.colorForPriority('medium'), t),
+                    _legendItem(
+                        'Medium', TaskUtils.colorForPriority('medium'), t),
                     const SizedBox(width: 16),
                     _legendItem('Low', TaskUtils.colorForPriority('low'), t),
                   ],
@@ -476,21 +487,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget _legendItem(String text, Color color, TemaData t) {
     return Row(
       children: [
-        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 6),
-        Text(text, style: GoogleFonts.montserrat(fontSize: 12, fontWeight: FontWeight.w600, color: t.textSecondary)),
+        Text(text,
+            style: GoogleFonts.montserrat(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: t.textSecondary)),
       ],
     );
   }
 
-  // ==========================================
-  // TASK CARD
-  // ==========================================
   Widget _taskCard(Map<String, dynamic> task, TemaData t) {
     final priority = task['priority'] ?? 'Sedang';
     final color = TaskUtils.colorForPriority(priority);
     final title = task['title'] ?? 'Tanpa Judul';
-    final category = task['category'] ?? 'Kerja';
+    final category =
+        task['category_name'] ?? task['category'] ?? 'Tanpa kategori';
 
     return Container(
       width: double.infinity,
@@ -502,7 +518,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         border: Border.all(color: t.border, width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(t.isDark ? 0.2 : 0.02),
+            color: Colors.black.withValues(alpha: t.isDark ? 0.2 : 0.02),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -556,7 +572,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.1),
+                        color: color.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -585,9 +601,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
       child: Column(
         children: [
           Icon(Icons.calendar_today_outlined,
-              color: t.textSecondary.withOpacity(0.4), size: 40),
+              color: t.textSecondary.withValues(alpha: 0.4), size: 40),
           const SizedBox(height: 16),
-          Text(_showAllEvents ? 'Tidak ada task sama sekali' : 'No tasks on this date',
+          Text(
+              _showAllEvents
+                  ? 'Tidak ada task sama sekali'
+                  : 'Tidak ada task pada tanggal ini',
               style: GoogleFonts.montserrat(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
@@ -625,13 +644,4 @@ class _CalendarScreenState extends State<CalendarScreen> {
         'November',
         'Desember'
       ][month - 1];
-  String _dayName(int weekday) => [
-        'Senin',
-        'Selasa',
-        'Rabu',
-        'Kamis',
-        'Jumat',
-        'Sabtu',
-        'Minggu'
-      ][weekday - 1];
 }

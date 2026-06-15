@@ -10,9 +10,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  http: any
-  google_fonts: any
+  http: ^1.2.1
+  google_fonts: ^6.2.1
   shared_preferences: ^2.2.2
+  flutter_secure_storage: ^9.2.4
   flutter_local_notifications: ^21.0.0
   timezone: ^0.11.0
   image_picker: ^1.2.2

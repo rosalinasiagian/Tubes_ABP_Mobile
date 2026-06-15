@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -6,6 +6,272 @@ import 'top_navigation.dart';
 import 'bot_navigation.dart';
 import 'tema_screen.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+class _PomodoroController extends ChangeNotifier {
+  static final _PomodoroController instance = _PomodoroController._();
+
+  _PomodoroController._();
+
+  int timeLeft = 25 * 60;
+  bool isRunning = false;
+  String currentMode = 'Pomodoro';
+  Timer? _timer;
+
+  int pomodoroDuration = 25;
+  int shortBreakDuration = 5;
+  int longBreakDuration = 15;
+
+  int longBreakAfter = 4;
+  int completedPomodoroSessions = 0;
+  bool autoStartNext = false;
+  bool soundNotification = true;
+  bool notificationsGranted = false;
+  bool _notificationsInitialized = false;
+
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+
+  Future<void> initNotifications() async {
+    if (_notificationsInitialized) return;
+
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    const initSettings =
+        InitializationSettings(android: androidSettings, iOS: iosSettings);
+
+    try {
+      await _notificationsPlugin.initialize(settings: initSettings);
+      _notificationsInitialized = true;
+    } catch (_) {}
+  }
+
+  Future<bool> refreshNotificationPermission({bool notify = true}) async {
+    await initNotifications();
+
+    var granted = true;
+    final androidPlugin =
+        _notificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      granted = await androidPlugin.areNotificationsEnabled() ?? false;
+    } else {
+      final iosPlugin =
+          _notificationsPlugin.resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>();
+      if (iosPlugin != null) {
+        final permissions = await iosPlugin.checkPermissions();
+        granted = permissions?.isEnabled ?? false;
+      }
+    }
+
+    final changed = notificationsGranted != granted;
+    notificationsGranted = granted;
+    if (notify && changed) notifyListeners();
+    return notificationsGranted;
+  }
+
+  Future<bool> requestNotificationPermission() async {
+    await initNotifications();
+
+    if (await refreshNotificationPermission()) {
+      return true;
+    }
+
+    final iosPlugin =
+        _notificationsPlugin.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>();
+    if (iosPlugin != null) {
+      notificationsGranted = await iosPlugin.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          ) ??
+          false;
+      notifyListeners();
+      return notificationsGranted;
+    }
+
+    final androidPlugin =
+        _notificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      notificationsGranted =
+          await androidPlugin.requestNotificationsPermission() ?? false;
+      notificationsGranted = await refreshNotificationPermission(notify: false);
+      notifyListeners();
+      return notificationsGranted;
+    }
+
+    notificationsGranted = true;
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> showNotification(String title, String body) async {
+    final wasGranted = notificationsGranted;
+    if (!await refreshNotificationPermission(notify: false)) {
+      if (wasGranted) notifyListeners();
+      return;
+    }
+    await initNotifications();
+
+    final androidDetails = AndroidNotificationDetails(
+      'pomodoro_channel',
+      'Pomodoro Notifications',
+      channelDescription: 'Notifikasi untuk timer Pomodoro',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: soundNotification,
+    );
+    final iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: soundNotification,
+    );
+    final platformDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _notificationsPlugin.show(
+      id: 0,
+      title: title,
+      body: body,
+      notificationDetails: platformDetails,
+    );
+  }
+
+  void startTimer() {
+    _timer?.cancel();
+    isRunning = true;
+    notifyListeners();
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (timeLeft > 0) {
+        timeLeft--;
+        notifyListeners();
+        return;
+      }
+
+      _completeCurrentSession();
+    });
+  }
+
+  void stopTimer({bool notify = true}) {
+    _timer?.cancel();
+    _timer = null;
+    isRunning = false;
+    if (notify) notifyListeners();
+  }
+
+  void resetTimer() {
+    stopTimer(notify: false);
+    timeLeft = _durationForMode(currentMode) * 60;
+    notifyListeners();
+  }
+
+  void skipTimer() {
+    stopTimer(notify: false);
+    _moveToNextMode(countCompletedPomodoro: false);
+    notifyListeners();
+  }
+
+  void setMode(String mode, int timeInSeconds) {
+    stopTimer(notify: false);
+    currentMode = mode;
+    timeLeft = timeInSeconds;
+    notifyListeners();
+  }
+
+  void changeDuration(String type, int delta) {
+    if (type == 'Pomodoro') {
+      pomodoroDuration = (pomodoroDuration + delta).clamp(1, 60);
+      if (currentMode == 'Pomodoro') {
+        stopTimer(notify: false);
+        timeLeft = pomodoroDuration * 60;
+      }
+    } else if (type == 'Istirahat Pendek') {
+      shortBreakDuration = (shortBreakDuration + delta).clamp(1, 30);
+      if (currentMode == 'Short Break') {
+        stopTimer(notify: false);
+        timeLeft = shortBreakDuration * 60;
+      }
+    } else if (type == 'Istirahat Panjang') {
+      longBreakDuration = (longBreakDuration + delta).clamp(1, 60);
+      if (currentMode == 'Long Break') {
+        stopTimer(notify: false);
+        timeLeft = longBreakDuration * 60;
+      }
+    }
+
+    notifyListeners();
+  }
+
+  void setLongBreakAfter(int value) {
+    longBreakAfter = value.clamp(2, 8);
+    notifyListeners();
+  }
+
+  void toggleAutoStartNext() {
+    autoStartNext = !autoStartNext;
+    notifyListeners();
+  }
+
+  void toggleSoundNotification() {
+    soundNotification = !soundNotification;
+    notifyListeners();
+  }
+
+  String formatTime(int seconds) {
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  void _completeCurrentSession() {
+    final completedMode = currentMode;
+    stopTimer(notify: false);
+    unawaited(
+      showNotification('Waktu Habis!', 'Sesi $completedMode telah selesai.'),
+    );
+    _moveToNextMode(countCompletedPomodoro: completedMode == 'Pomodoro');
+
+    if (autoStartNext) {
+      startTimer();
+    } else {
+      notifyListeners();
+    }
+  }
+
+  void _moveToNextMode({required bool countCompletedPomodoro}) {
+    if (currentMode == 'Pomodoro') {
+      if (countCompletedPomodoro) {
+        completedPomodoroSessions++;
+      }
+
+      final useLongBreak = countCompletedPomodoro &&
+          completedPomodoroSessions > 0 &&
+          completedPomodoroSessions % longBreakAfter == 0;
+      currentMode = useLongBreak ? 'Long Break' : 'Short Break';
+      timeLeft = _durationForMode(currentMode) * 60;
+      return;
+    }
+
+    currentMode = 'Pomodoro';
+    timeLeft = pomodoroDuration * 60;
+  }
+
+  int _durationForMode(String mode) {
+    if (mode == 'Short Break') return shortBreakDuration;
+    if (mode == 'Long Break') return longBreakDuration;
+    return pomodoroDuration;
+  }
+}
 
 class PomodoroScreen extends StatefulWidget {
   const PomodoroScreen({super.key});
@@ -15,168 +281,86 @@ class PomodoroScreen extends StatefulWidget {
 }
 
 class _PomodoroScreenState extends State<PomodoroScreen> {
-  // ── State Timer ──────────────────────────────────────────
-  int _timeLeft = 25 * 60;
-  bool _isRunning = false;
-  String _currentMode = 'Pomodoro';
-  Timer? _timer;
+  final _controller = _PomodoroController.instance;
 
-  // ── Durasi (menit) ───────────────────────────────────────
-  int _pomodoroDuration = 25;
-  int _shortBreakDuration = 5;
-  int _longBreakDuration = 15;
+  int get _timeLeft => _controller.timeLeft;
+  bool get _isRunning => _controller.isRunning;
+  String get _currentMode => _controller.currentMode;
 
-  // ── Pengaturan Sesi ──────────────────────────────────────
-  int _longBreakAfter = 4; // sesi sebelum long break (slider)
-  bool _autoStartNext = false; // Mulai sesi berikutnya otomatis
-  bool _soundNotification = true; // Suara notifikasi
-  bool _browserNotifGranted = false;
+  int get _pomodoroDuration => _controller.pomodoroDuration;
+  int get _shortBreakDuration => _controller.shortBreakDuration;
+  int get _longBreakDuration => _controller.longBreakDuration;
 
-  final FlutterLocalNotificationsPlugin _notificationsPlugin =
-      FlutterLocalNotificationsPlugin();
+  int get _longBreakAfter => _controller.longBreakAfter;
+  bool get _autoStartNext => _controller.autoStartNext;
+  bool get _soundNotification => _controller.soundNotification;
+  bool get _browserNotifGranted => _controller.notificationsGranted;
 
   @override
   void initState() {
     super.initState();
-    _initNotifications();
+    _controller.addListener(_onTimerChanged);
+    unawaited(_controller.refreshNotificationPermission());
   }
 
-  Future<void> _initNotifications() async {
-    const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-    const DarwinInitializationSettings iosSettings =
-        DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    );
-    const InitializationSettings initSettings =
-        InitializationSettings(android: androidSettings, iOS: iosSettings);
-    await _notificationsPlugin.initialize(settings: initSettings);
+  void _onTimerChanged() {
+    if (mounted) setState(() {});
   }
 
-  Future<void> _showNotification(String title, String body) async {
-    if (!_browserNotifGranted) return;
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'pomodoro_channel',
-      'Pomodoro Notifications',
-      channelDescription: 'Notifikasi untuk timer Pomodoro',
-      importance: Importance.max,
-      priority: Priority.high,
-    );
-    const NotificationDetails platformDetails =
-        NotificationDetails(android: androidDetails);
-    await _notificationsPlugin.show(
-      id: 0,
-      title: title,
-      body: body,
-      notificationDetails: platformDetails,
+  Future<void> _activateNotifications() async {
+    final granted = await _controller.requestNotificationPermission();
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          granted
+              ? 'Notifikasi perangkat aktif'
+              : 'Izin notifikasi belum diberikan',
+          style: GoogleFonts.montserrat(fontSize: 13),
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
-  // ── Timer Logic ──────────────────────────────────────────
+  Future<void> _showNotification(String title, String body) =>
+      _controller.showNotification(title, body);
+
   void _startTimer() {
-    _timer?.cancel();
-    setState(() => _isRunning = true);
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() {
-        if (_timeLeft > 0) {
-          _timeLeft--;
-        } else {
-          _stopTimer();
-          if (_soundNotification || _browserNotifGranted) {
-             _showNotification("Waktu Habis!", "Sesi $_currentMode telah selesai.");
-          }
-          if (_autoStartNext) {
-             _skipTimer();
-             _startTimer();
-          } else {
-             _skipTimer();
-          }
-        }
-      });
-    });
+    _controller.startTimer();
   }
 
   void _stopTimer() {
-    _timer?.cancel();
-    setState(() => _isRunning = false);
+    _controller.stopTimer();
   }
 
   void _resetTimer() {
-    _stopTimer();
-    setState(() {
-      if (_currentMode == 'Pomodoro') {
-        _timeLeft = _pomodoroDuration * 60;
-      } else if (_currentMode == 'Short Break') {
-        _timeLeft = _shortBreakDuration * 60;
-      } else {
-        _timeLeft = _longBreakDuration * 60;
-      }
-    });
+    _controller.resetTimer();
   }
 
   void _skipTimer() {
-    _stopTimer();
-    setState(() {
-      if (_currentMode == 'Pomodoro') {
-        _currentMode = 'Short Break';
-        _timeLeft = _shortBreakDuration * 60;
-      } else if (_currentMode == 'Short Break') {
-        _currentMode = 'Pomodoro';
-        _timeLeft = _pomodoroDuration * 60;
-      } else {
-        _currentMode = 'Pomodoro';
-        _timeLeft = _pomodoroDuration * 60;
-      }
-    });
+    _controller.skipTimer();
   }
 
   void _setMode(String mode, int timeInSeconds) {
-    _stopTimer();
-    setState(() {
-      _currentMode = mode;
-      _timeLeft = timeInSeconds;
-    });
+    _controller.setMode(mode, timeInSeconds);
   }
 
   void _changeDuration(String type, int delta) {
-    setState(() {
-      if (type == 'Pomodoro') {
-        _pomodoroDuration = (_pomodoroDuration + delta).clamp(1, 60);
-        if (_currentMode == 'Pomodoro') {
-          _timeLeft = _pomodoroDuration * 60;
-          _stopTimer();
-        }
-      } else if (type == 'Istirahat Pendek') {
-        _shortBreakDuration = (_shortBreakDuration + delta).clamp(1, 30);
-        if (_currentMode == 'Short Break') {
-          _timeLeft = _shortBreakDuration * 60;
-          _stopTimer();
-        }
-      } else if (type == 'Istirahat Panjang') {
-        _longBreakDuration = (_longBreakDuration + delta).clamp(1, 60);
-        if (_currentMode == 'Long Break') {
-          _timeLeft = _longBreakDuration * 60;
-          _stopTimer();
-        }
-      }
-    });
+    _controller.changeDuration(type, delta);
   }
 
   String _formatTime(int seconds) {
-    int m = seconds ~/ 60;
-    int s = seconds % 60;
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    return _controller.formatTime(seconds);
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _controller.removeListener(_onTimerChanged);
     super.dispose();
   }
 
-  // ── BUILD ────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -194,7 +378,6 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Judul ──────────────────────────────────
                 Text(
                   'Timer Fokus',
                   style: GoogleFonts.montserrat(
@@ -205,11 +388,9 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // ── Kartu Timer ────────────────────────────
                 _buildTimerCard(t),
                 const SizedBox(height: 32),
 
-                // ── Durasi Sesi ────────────────────────────
                 _buildSectionTitle('Durasi Sesi', t),
                 const SizedBox(height: 16),
                 _buildDurationCard(
@@ -235,7 +416,6 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // ── Fitur Cerdas & Target ──────────────────
                 _buildSectionTitle('Fitur Cerdas & Target', t),
                 const SizedBox(height: 16),
                 _buildLongBreakSlider(t),
@@ -250,7 +430,6 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
     );
   }
 
-  // ── WIDGET: Kartu Timer ──────────────────────────────────
   Widget _buildTimerCard(TemaData t) {
     return Container(
       width: double.infinity,
@@ -261,8 +440,9 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
         border: Border.all(color: t.border, width: 1.5),
         boxShadow: [
           BoxShadow(
-            // Glow biru faint — mempertahankan nuansa web
-            color: const Color(0xFF60A5FA).withOpacity(t.isDark ? 0.0 : 0.10),
+           
+            color: const Color(0xFF60A5FA)
+                .withValues(alpha: t.isDark ? 0.0 : 0.10),
             blurRadius: 50,
             spreadRadius: 0,
           ),
@@ -272,8 +452,8 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                 begin: Alignment.bottomRight,
                 end: Alignment.center,
                 colors: [
-                  // Biru sangat tipis agar tidak terlalu mencolok di dark
-                  const Color(0xff00428e).withOpacity(0.03),
+                 
+                  const Color(0xff00428e).withValues(alpha: 0.03),
                   t.surface,
                 ],
               )
@@ -281,14 +461,13 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                 begin: Alignment.bottomRight,
                 end: Alignment.center,
                 colors: [
-                  Color(0xFFDBEAFE), // blue-100 — biru pastel lembut
+                  Color(0xFFDBEAFE),
                   Colors.white,
                 ],
               ),
       ),
       child: Column(
         children: [
-          // Toggle mode tabs
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
@@ -306,7 +485,6 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
           ),
           const SizedBox(height: 40),
 
-          // Waktu
           Text(
             _formatTime(_timeLeft),
             style: GoogleFonts.montserrat(
@@ -327,11 +505,9 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
           ),
           const SizedBox(height: 40),
 
-          // Tombol: Reset | Play/Pause | Skip
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // ── Tombol Reset ──────────────────────────
               _buildCircleOutlineBtn(
                 icon: Icons.refresh_rounded,
                 size: 56,
@@ -341,7 +517,6 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
               ),
               const SizedBox(width: 20),
 
-              // ── Tombol Play / Pause ───────────────────
               GestureDetector(
                 onTap: _isRunning ? _stopTimer : _startTimer,
                 child: Container(
@@ -352,7 +527,7 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: t.accent.withOpacity(0.3),
+                        color: t.accent.withValues(alpha: 0.3),
                         blurRadius: 15,
                         offset: const Offset(0, 5),
                       ),
@@ -367,7 +542,6 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
               ),
               const SizedBox(width: 20),
 
-              // ── Tombol Skip ───────────────────────────
               _buildCircleOutlineBtn(
                 icon: Icons.skip_next_rounded,
                 size: 56,
@@ -382,7 +556,6 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
     );
   }
 
-  // ── WIDGET: Fitur Cerdas & Target ──────────────────────
   Widget _buildLongBreakSlider(TemaData t) {
     return Container(
       decoration: BoxDecoration(
@@ -406,8 +579,8 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: t.isDark ? t.background : t.surfaceVariant,
                   borderRadius: BorderRadius.circular(8),
@@ -432,16 +605,14 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
               thumbColor: t.accent,
               overlayColor: t.accent.withValues(alpha: 0.15),
               trackHeight: 4,
-              thumbShape:
-                  const RoundSliderThumbShape(enabledThumbRadius: 10),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
             ),
             child: Slider(
               value: _longBreakAfter.toDouble(),
               min: 2,
               max: 8,
               divisions: 6,
-              onChanged: (val) =>
-                  setState(() => _longBreakAfter = val.round()),
+              onChanged: (val) => _controller.setLongBreakAfter(val.round()),
             ),
           ),
           Text(
@@ -459,37 +630,34 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
   Widget _buildSmartFeaturesCards(TemaData t) {
     return Column(
       children: [
-        // ── Card 1: Mulai sesi otomatis (Biru) ───
         GestureDetector(
-          onTap: () => setState(() => _autoStartNext = !_autoStartNext),
+          onTap: _controller.toggleAutoStartNext,
           child: _buildColoredToggleCard(
             icon: Icons.bolt_outlined,
             title: 'Mulai sesi berikutnya otomatis',
             isOn: _autoStartNext,
-            colorScheme: const Color(0xFF1D4ED8), // Biru gelap
-            bgColor: const Color(0xFFEFF6FF), // Biru sangat muda
-            borderColor: const Color(0xFFBFDBFE), // Biru muda border
+            colorScheme: const Color(0xFF1D4ED8),
+            bgColor: const Color(0xFFEFF6FF),
+            borderColor: const Color(0xFFBFDBFE),
             t: t,
           ),
         ),
         const SizedBox(height: 12),
 
-        // ── Card 2: Suara notifikasi (Hijau) ───
         GestureDetector(
-          onTap: () => setState(() => _soundNotification = !_soundNotification),
+          onTap: _controller.toggleSoundNotification,
           child: _buildColoredToggleCard(
             icon: Icons.volume_up_outlined,
             title: 'Suara notifikasi',
             isOn: _soundNotification,
-            colorScheme: const Color(0xFF047857), // Hijau gelap
-            bgColor: const Color(0xFFF0FDF4), // Hijau sangat muda
-            borderColor: const Color(0xFFBBF7D0), // Hijau muda border
+            colorScheme: const Color(0xFF047857),
+            bgColor: const Color(0xFFF0FDF4),
+            borderColor: const Color(0xFFBBF7D0),
             t: t,
           ),
         ),
         const SizedBox(height: 12),
 
-        // ── Card 3: Notifikasi Perangkat ───
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
@@ -534,31 +702,9 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
               ),
               Row(
                 children: [
-                  // Tombol Aktifkan
                   GestureDetector(
-                    onTap: () async {
-                      // Request permission for iOS
-                      final iosPlugin = _notificationsPlugin.resolvePlatformSpecificImplementation<
-                          IOSFlutterLocalNotificationsPlugin>();
-                      if (iosPlugin != null) {
-                        final granted = await iosPlugin.requestPermissions(
-                          alert: true,
-                          badge: true,
-                          sound: true,
-                        );
-                        setState(() => _browserNotifGranted = granted ?? true);
-                      } else {
-                        // For Android
-                        final androidPlugin = _notificationsPlugin.resolvePlatformSpecificImplementation<
-                            AndroidFlutterLocalNotificationsPlugin>();
-                        if (androidPlugin != null) {
-                           final granted = await androidPlugin.requestNotificationsPermission();
-                           setState(() => _browserNotifGranted = granted ?? true);
-                        } else {
-                           setState(() => _browserNotifGranted = true);
-                        }
-                      }
-                    },
+                    onTap:
+                        _browserNotifGranted ? null : _activateNotifications,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 8),
@@ -568,21 +714,27 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                         border: Border.all(color: t.border),
                       ),
                       child: Text(
-                        'Aktifkan',
+                        _browserNotifGranted ? 'Aktif' : 'Aktifkan',
                         style: GoogleFonts.montserrat(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: t.textPrimary,
+                          color: _browserNotifGranted
+                              ? const Color(0xFF16A34A)
+                              : t.textPrimary,
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Tombol Tes
                   GestureDetector(
                     onTap: () async {
-                      if (_browserNotifGranted) {
-                        await _showNotification('Tes Notifikasi', 'Ini adalah tes notifikasi dari Pomodoro Godone.');
+                      final granted =
+                          await _controller.refreshNotificationPermission();
+                      if (!mounted) return;
+
+                      if (granted) {
+                        await _showNotification('Tes Notifikasi',
+                            'Ini adalah tes notifikasi dari Pomodoro Godone.');
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -611,7 +763,7 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF2563EB), // Biru solid
+                        color: const Color(0xFF2563EB),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -684,9 +836,7 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
     );
   }
 
-  // ── WIDGET HELPERS ───────────────────────────────────────
-
-  Widget _buildModeTab(String title, int time, TemaData t) {
+Widget _buildModeTab(String title, int time, TemaData t) {
     final bool isSelected = _currentMode == title;
     return Expanded(
       child: GestureDetector(
@@ -699,7 +849,8 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: Colors.black.withOpacity(t.isDark ? 0.2 : 0.05),
+                      color:
+                          Colors.black.withValues(alpha: t.isDark ? 0.2 : 0.05),
                       blurRadius: 5,
                       offset: const Offset(0, 2),
                     ),
@@ -779,7 +930,7 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                       style: GoogleFonts.montserrat(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        color: t.textSecondary.withOpacity(0.6),
+                        color: t.textSecondary.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
@@ -808,7 +959,6 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
     );
   }
 
-  // Tombol bulat outline (Reset & Skip)
   Widget _buildCircleOutlineBtn({
     required IconData icon,
     required double size,
@@ -834,5 +984,4 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
       ),
     );
   }
-
 }

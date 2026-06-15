@@ -3,10 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'dart:io';
-import 'top_navigation.dart';
 import 'login_screen.dart';
 import '../services/api_service.dart';
 import '../services/app_notifier.dart';
+import '../services/notification_prefs.dart';
 import 'tema_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -28,7 +28,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isNotificationOn = true;
   bool _isLoadingUser = true;
 
-  // Profil controllers
   late TextEditingController _nameController;
   late TextEditingController _usernameController;
   late TextEditingController _emailController;
@@ -36,7 +35,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   File? _localPhotoFile;
   bool _isLoadingPhoto = false;
 
-  // Keamanan controllers & visibility
   final TextEditingController _currentPassController = TextEditingController();
   final TextEditingController _newPassController = TextEditingController();
   final TextEditingController _confirmPassController = TextEditingController();
@@ -47,6 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _isNotificationOn = NotificationPrefs.instance.enabled;
     _nameController = TextEditingController(text: widget.name ?? '');
     _usernameController = TextEditingController(text: '');
     _emailController = TextEditingController(text: widget.email ?? '');
@@ -98,9 +97,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (croppedFile != null) {
         setState(() => _isLoadingPhoto = true);
-        if (mounted) Navigator.pop(context); // Tutup dialog
+        if (mounted) Navigator.pop(context);
 
-        // Upload ke server
         await ApiService.uploadPhoto(croppedFile.path);
 
         setState(() {
@@ -126,7 +124,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _deletePhoto(TemaData t) async {
     try {
       setState(() => _isLoadingPhoto = true);
-      if (mounted) Navigator.pop(context); // Tutup dialog
+      if (mounted) Navigator.pop(context);
 
       await ApiService.deletePhoto();
 
@@ -169,7 +167,91 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return parts[0][0].toUpperCase();
   }
 
-  // ── Dialogs ───────────────────────────────────────────────
+  ImageProvider? get _photoProvider {
+    if (_localPhotoFile != null) return FileImage(_localPhotoFile!);
+    if (_photoUrl != null && _photoUrl!.isNotEmpty) {
+      return NetworkImage(_photoUrl!);
+    }
+    return null;
+  }
+
+  void _openPhotoViewer(TemaData t) {
+    final image = _photoProvider;
+    if (image == null) {
+      _showPhotoDialog(context, t);
+      return;
+    }
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Foto Profil',
+      barrierColor: Colors.black.withValues(alpha: 0.9),
+      transitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (ctx, _, __) {
+        return SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(ctx),
+                  child: InteractiveViewer(
+                    minScale: 0.8,
+                    maxScale: 4,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(24),
+                          child: Image(
+                            image: image,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => Container(
+                              padding: const EdgeInsets.all(40),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: const Icon(Icons.broken_image_outlined,
+                                  color: Colors.white54, size: 64),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Material(
+                  color: Colors.white.withValues(alpha: 0.14),
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    tooltip: 'Tutup',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      transitionBuilder: (ctx, animation, _, child) {
+        final curved =
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.9, end: 1.0).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
 
   void _showSuccessDialog(BuildContext context, TemaData t, String message) {
     showDialog(
@@ -323,7 +405,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       fontSize: 16,
                       color: t.textPrimary)),
               const SizedBox(height: 16),
-              // Tombol pilih foto
               GestureDetector(
                 onTap: () => _pickAndCropImage(t),
                 child: Container(
@@ -333,7 +414,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   decoration: BoxDecoration(
                     color: t.accentLight,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: t.accent.withOpacity(0.3)),
+                    border: Border.all(color: t.accent.withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -341,7 +422,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Icon(Icons.photo_library_outlined,
                           color: t.accent, size: 20),
                       const SizedBox(width: 8),
-                      Text(hasPhoto ? 'Ganti Foto (Galeri)' : 'Pilih foto dari media',
+                      Text(
+                          hasPhoto
+                              ? 'Ganti Foto (Galeri)'
+                              : 'Pilih foto dari media',
                           style: GoogleFonts.montserrat(
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
@@ -351,7 +435,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              // Info spesifikasi
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -463,7 +546,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onPressed: () {
                           Navigator.pushAndRemoveUntil(
                             context,
-                            MaterialPageRoute(builder: (_) => const LoginScreen()),
+                            MaterialPageRoute(
+                                builder: (_) => const LoginScreen()),
                             (route) => false,
                           );
                         },
@@ -495,7 +579,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header
                   Row(
                     children: [
                       const Icon(Icons.warning_amber_rounded,
@@ -515,7 +598,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         fontSize: 12, color: t.textSecondary, height: 1.5),
                   ),
                   const SizedBox(height: 16),
-                  // Password field
                   Text('Kata Sandi',
                       style: GoogleFonts.montserrat(
                           fontSize: 11,
@@ -557,14 +639,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           onPressed: isDeleteEnabled
                               ? () async {
                                   try {
-                                    await ApiService.deleteAccount(passCtrl.text);
+                                    await ApiService.deleteAccount(
+                                        passCtrl.text);
                                     if (context.mounted) {
                                       setDialogState(() => deleted = true);
                                     }
                                   } catch (e) {
                                     if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Gagal menghapus akun: $e')),
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                            content: Text(
+                                                'Gagal menghapus akun: $e')),
                                       );
                                     }
                                   }
@@ -634,7 +720,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── BUILD ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -685,7 +770,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Header ────────────────────────────────────────────────
   Widget _buildProfileHeader(TemaData t) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -695,7 +779,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         border: Border.all(color: t.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(t.isDark ? 0.25 : 0.03),
+            color: Colors.black.withValues(alpha: t.isDark ? 0.25 : 0.03),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -727,34 +811,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
             alignment: Alignment.bottomCenter,
             clipBehavior: Clip.none,
             children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration:
-                    BoxDecoration(color: t.surface, shape: BoxShape.circle),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: t.accentLight,
-                      backgroundImage: _localPhotoFile != null
-                          ? FileImage(_localPhotoFile!)
-                          : (_photoUrl != null && _photoUrl!.isNotEmpty
-                              ? NetworkImage(_photoUrl!)
-                              : null) as ImageProvider?,
-                      child: (_localPhotoFile == null && (_photoUrl == null || _photoUrl!.isEmpty))
-                          ? Text(
-                              _getInitials(_nameController.text),
-                              style: GoogleFonts.montserrat(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w900,
-                                  color: t.accent),
-                            )
-                          : null,
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => _openPhotoViewer(t),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration:
+                        BoxDecoration(color: t.surface, shape: BoxShape.circle),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CircleAvatar(
+                          radius: 40,
+                          backgroundColor: t.accentLight,
+                          backgroundImage: _photoProvider,
+                          child: (_localPhotoFile == null &&
+                                  (_photoUrl == null || _photoUrl!.isEmpty))
+                              ? Text(
+                                  _getInitials(_nameController.text),
+                                  style: GoogleFonts.montserrat(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w900,
+                                      color: t.accent),
+                                )
+                              : null,
+                        ),
+                        if (_isLoadingPhoto) const CircularProgressIndicator(),
+                        Positioned(
+                          right: 2,
+                          bottom: 2,
+                          child: Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: t.accent,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: t.surface, width: 2),
+                            ),
+                            child: const Icon(Icons.zoom_in_rounded,
+                                color: Colors.white, size: 14),
+                          ),
+                        ),
+                      ],
                     ),
-                    if (_isLoadingPhoto)
-                      const CircularProgressIndicator(),
-                  ],
+                  ),
                 ),
               ),
               Positioned(
@@ -802,7 +902,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Tab Bar — ikon di atas, label kecil di bawah saat aktif ─
   Widget _buildSubTabBar(TemaData t) {
     final tabs = [
       const _TabMeta(Icons.person_outline_rounded, 'Profil', Color(0xFF6366F1),
@@ -823,7 +922,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         border: Border.all(color: t.border),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(t.isDark ? 0.2 : 0.02),
+              color: Colors.black.withValues(alpha: t.isDark ? 0.2 : 0.02),
               blurRadius: 10,
               offset: const Offset(0, 4)),
         ],
@@ -842,13 +941,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? meta.bgColor.withOpacity(t.isDark ? 0.2 : 0.12)
+                      ? meta.bgColor.withValues(alpha: t.isDark ? 0.2 : 0.12)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                   border: isSelected
                       ? Border.all(
                           color: meta.activeColor
-                              .withOpacity(t.isDark ? 0.4 : 0.25))
+                              .withValues(alpha: t.isDark ? 0.4 : 0.25))
                       : null,
                 ),
                 child: Column(
@@ -859,7 +958,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       size: 20,
                       color: isSelected ? meta.activeColor : t.textSecondary,
                     ),
-                    // Label kecil di bawah ikon — hanya saat aktif
                     AnimatedSize(
                       duration: const Duration(milliseconds: 220),
                       curve: Curves.easeInOut,
@@ -904,7 +1002,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ── Tab 0: Profil ─────────────────────────────────────────
   Widget _buildProfilContent(TemaData t) {
     return Column(
       children: [
@@ -933,8 +1030,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     try {
                       final names = _nameController.text.trim().split(' ');
                       final firstName = names.isNotEmpty ? names.first : '';
-                      final lastName = names.length > 1 ? names.skip(1).join(' ') : '';
-                      
+                      final lastName =
+                          names.length > 1 ? names.skip(1).join(' ') : '';
+
                       await ApiService.updateUser({
                         'first_name': firstName,
                         'last_name': lastName,
@@ -989,7 +1087,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         : (_photoUrl != null && _photoUrl!.isNotEmpty
                             ? NetworkImage(_photoUrl!)
                             : null) as ImageProvider?,
-                    child: (_localPhotoFile == null && (_photoUrl == null || _photoUrl!.isEmpty))
+                    child: (_localPhotoFile == null &&
+                            (_photoUrl == null || _photoUrl!.isEmpty))
                         ? Text(
                             _getInitials(_nameController.text),
                             style: GoogleFonts.montserrat(
@@ -999,8 +1098,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           )
                         : null,
                   ),
-                  if (_isLoadingPhoto)
-                    const CircularProgressIndicator(),
+                  if (_isLoadingPhoto) const CircularProgressIndicator(),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1031,7 +1129,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Tab 1: Keamanan ───────────────────────────────────────
   Widget _buildKeamananContent(TemaData t) {
     return Column(
       children: [
@@ -1070,22 +1167,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: ElevatedButton.icon(
                       onPressed: () async {
                         if (_currentPassController.text.trim().isEmpty) {
-                          _showErrorDialog(context, t, 'Current password harus diisi!');
+                          _showErrorDialog(
+                              context, t, 'Current password harus diisi!');
                           return;
                         }
-                        if (_newPassController.text.trim().isEmpty || _confirmPassController.text.trim().isEmpty) {
-                          _showErrorDialog(context, t, 'Password baru dan konfirmasi password harus diisi!');
+                        if (_newPassController.text.trim().isEmpty ||
+                            _confirmPassController.text.trim().isEmpty) {
+                          _showErrorDialog(context, t,
+                              'Password baru dan konfirmasi password harus diisi!');
                           return;
                         }
-                        if (_newPassController.text != _confirmPassController.text) {
-                          _showErrorDialog(context, t, 'Konfirmasi password tidak cocok!');
+                        final newPassword = _newPassController.text;
+                        final isStrongPassword = newPassword.length >= 8 &&
+                            RegExp(r'[A-Za-z]').hasMatch(newPassword) &&
+                            RegExp(r'[0-9]').hasMatch(newPassword) &&
+                            RegExp(r'[^A-Za-z0-9]').hasMatch(newPassword);
+                        if (!isStrongPassword) {
+                          _showErrorDialog(context, t,
+                              'Password minimal 8 karakter dan harus berisi huruf, angka, serta simbol.');
+                          return;
+                        }
+                        if (_newPassController.text !=
+                            _confirmPassController.text) {
+                          _showErrorDialog(
+                              context, t, 'Konfirmasi password tidak cocok!');
                           return;
                         }
                         try {
                           final names = _nameController.text.trim().split(' ');
                           final firstName = names.isNotEmpty ? names.first : '';
-                          final lastName = names.length > 1 ? names.skip(1).join(' ') : '';
-                          
+                          final lastName =
+                              names.length > 1 ? names.skip(1).join(' ') : '';
+
                           await ApiService.updateUser({
                             'first_name': firstName,
                             'last_name': lastName,
@@ -1102,14 +1215,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           _confirmPassController.clear();
                           _showSuccessDialog(
                               context, t, 'Kata sandi berhasil\ndiperbarui!');
-                          } catch (e) {
-                            if (!mounted) return;
-                            String errMsg = e.toString();
-                            if (errMsg.startsWith('Exception: ')) {
-                              errMsg = errMsg.replaceFirst('Exception: ', '');
-                            }
-                            _showErrorDialog(context, t, errMsg);
+                        } catch (e) {
+                          if (!mounted) return;
+                          String errMsg = e.toString();
+                          if (errMsg.startsWith('Exception: ')) {
+                            errMsg = errMsg.replaceFirst('Exception: ', '');
                           }
+                          _showErrorDialog(context, t, errMsg);
+                        }
                       },
                       icon: const Icon(Icons.lock_outline, size: 16),
                       label: Text('Perbarui',
@@ -1157,7 +1270,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                     color: t.isDark
-                        ? const Color(0xFF137333).withOpacity(0.2)
+                        ? const Color(0xFF137333).withValues(alpha: 0.2)
                         : const Color(0xFFE6F4EA),
                     borderRadius: BorderRadius.circular(6)),
                 child: Text('PRAKTIK KEAMANAN TERBAIK',
@@ -1186,9 +1299,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Tab 2: Preferensi ─────────────────────────────────────
   Widget _buildPreferensiContent(TemaData t) {
-    // Warna toggle: hijau jika ON, abu jika OFF
     const Color toggleActive = Color(0xFF22C55E);
     final Color toggleInactive =
         t.isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1);
@@ -1208,11 +1319,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 decoration: BoxDecoration(
                   border: Border.all(
                       color: _isNotificationOn
-                          ? toggleActive.withOpacity(0.35)
+                          ? toggleActive.withValues(alpha: 0.35)
                           : t.border),
                   color: _isNotificationOn
                       ? (t.isDark
-                          ? toggleActive.withOpacity(0.08)
+                          ? toggleActive.withValues(alpha: 0.08)
                           : const Color(0xFFF0FDF4))
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(14),
@@ -1221,7 +1332,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     CircleAvatar(
                       backgroundColor: _isNotificationOn
-                          ? toggleActive.withOpacity(0.15)
+                          ? toggleActive.withValues(alpha: 0.15)
                           : t.surfaceVariant,
                       child: Icon(
                         Icons.notifications_active,
@@ -1256,8 +1367,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       activeTrackColor: toggleActive,
                       inactiveThumbColor: Colors.white,
                       inactiveTrackColor: toggleInactive,
-                      onChanged: (val) =>
-                          setState(() => _isNotificationOn = val),
+                      onChanged: (val) {
+                        setState(() => _isNotificationOn = val);
+                        NotificationPrefs.instance.setEnabled(val);
+                      },
                     ),
                   ],
                 ),
@@ -1276,7 +1389,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                     color: t.isDark
-                        ? const Color(0xFF1A73E8).withOpacity(0.2)
+                        ? const Color(0xFF1A73E8).withValues(alpha: 0.2)
                         : const Color(0xFFE8F2FF),
                     borderRadius: BorderRadius.circular(6)),
                 child: Text('METADATA APLIKASI',
@@ -1299,7 +1412,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Tab 3: Zona Bahaya ────────────────────────────────────
   Widget _buildZonaBahayaContent(TemaData t) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1399,8 +1511,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Shared Helpers ────────────────────────────────────────
-
   Widget _buildCardWrapper({required Widget child, required TemaData t}) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1410,7 +1520,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         border: Border.all(color: t.border),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(t.isDark ? 0.2 : 0.02),
+              color: Colors.black.withValues(alpha: t.isDark ? 0.2 : 0.02),
               blurRadius: 10,
               offset: const Offset(0, 4)),
         ],
@@ -1449,7 +1559,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // TextField yang bisa diedit (untuk Informasi Pribadi)
   Widget _buildEditableField(
       String label, TextEditingController controller, TemaData t,
       {IconData? icon, TextInputType keyboardType = TextInputType.text}) {
@@ -1488,7 +1597,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // TextField password dengan tombol show/hide
   Widget _buildPasswordField(
       String label,
       String placeholder,
@@ -1548,7 +1656,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           CircleAvatar(
               radius: 10,
               backgroundColor: t.isDark
-                  ? const Color(0xFF137333).withOpacity(0.25)
+                  ? const Color(0xFF137333).withValues(alpha: 0.25)
                   : const Color(0xFFE6F4EA),
               child: Text(number,
                   style: const TextStyle(

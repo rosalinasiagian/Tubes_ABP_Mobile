@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// Import semua screen yang dibutuhkan
 import 'beranda_screen.dart';
-import 'task_screen.dart';
 import 'calendar_screen.dart';
-import 'priority_screen.dart';
 import 'pomodoro_screen.dart';
-
-// Wajib import tema_screen untuk integrasi warna dinamis
+import 'priority_screen.dart';
+import 'task_screen.dart';
 import 'tema_screen.dart';
 
 class BotNavigation extends StatelessWidget {
@@ -18,136 +15,98 @@ class BotNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Membungkus dengan ListenableBuilder agar otomatis refresh saat tema diubah
     return ListenableBuilder(
-        listenable: TemaData(),
-        builder: (context, child) {
-          final t = TemaData(); // Ambil instance tema saat ini
+      listenable: TemaData(),
+      builder: (context, child) {
+        final t = TemaData();
 
-          return Container(
-            // Margin untuk jarak dari tepi luar layar
-            margin: const EdgeInsets.only(left: 20, right: 20, bottom: 25),
-
-            // Padding untuk memberikan ruang/jarak ekstra di bagian dalam
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 5),
-
+        return SafeArea(
+          top: false,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOut,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: t
-                  .surface, // Background dinamis (putih di Terang, gelap di Gelap)
-              borderRadius: BorderRadius.circular(40),
-              border: Border.all(
-                // Memberikan border tipis khusus di mode gelap agar terpisah dari background
-                color: t.isDark ? t.border : Colors.transparent,
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  // Shadow lebih gelap saat mode gelap agar efek melayang tetap terlihat
-                  color: Colors.black.withOpacity(t.isDark ? 0.3 : 0.08),
-                  blurRadius: 25,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+              color: t.surface,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: t.border),
+              boxShadow: t.softShadow,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(40),
-              child: BottomNavigationBar(
-                currentIndex: currentIndex,
-                onTap: (index) {
-                  // Cegah navigasi jika menekan tab yang sedang aktif
-                  if (index == currentIndex) return;
-
-                  if (index == 0) {
-                    Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const BerandaScreen()));
-                  } else if (index == 1) {
-                    Navigator.pushReplacement(context,
-                        MaterialPageRoute(builder: (_) => const TaskScreen()));
-                  } else if (index == 2) {
-                    Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const PriorityScreen()));
-                  } else if (index == 3) {
-                    Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const CalendarScreen()));
-                  } else if (index == 4) {
-                    Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const PomodoroScreen()));
-                  }
-                },
-                type: BottomNavigationBarType.fixed,
-
-                // Ubah background jadi transparan agar mengikuti warna Container
+            child: NavigationBarTheme(
+              data: NavigationBarThemeData(
+                height: 64,
+                labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                  final selected = states.contains(WidgetState.selected);
+                  return GoogleFonts.montserrat(
+                    fontSize: 10,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    color: selected ? t.accent : t.textSecondary,
+                  );
+                }),
+                iconTheme: WidgetStateProperty.resolveWith((states) {
+                  final selected = states.contains(WidgetState.selected);
+                  return IconThemeData(
+                    color: selected ? Colors.white : t.textSecondary,
+                    size: selected ? 21 : 20,
+                  );
+                }),
+                indicatorColor: t.accent,
                 backgroundColor: Colors.transparent,
+              ),
+              child: NavigationBar(
+                selectedIndex: currentIndex,
                 elevation: 0,
-
-                selectedItemColor:
-                    t.accent, // Warna ikon & teks tab aktif dinamis
-                unselectedItemColor: t
-                    .textSecondary, // Warna ikon & teks tab tidak aktif dinamis
-                showUnselectedLabels: true,
-
-                // Icon diperkecil agar terlihat lebih padat
-                iconSize: 20,
-
-                selectedLabelStyle: GoogleFonts.montserrat(
-                  fontSize: 9,
-                  fontWeight: FontWeight.bold,
-                ),
-                unselectedLabelStyle: GoogleFonts.montserrat(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w500,
-                ),
-
-                items: const [
-                  BottomNavigationBarItem(
-                      icon: Padding(
-                          padding: EdgeInsets.only(bottom: 5),
-                          child: Icon(Icons.home_outlined)),
-                      activeIcon: Padding(
-                          padding: EdgeInsets.only(bottom: 5),
-                          child: Icon(Icons.home)),
-                      label: 'Beranda'),
-                  BottomNavigationBarItem(
-                      icon: Padding(
-                          padding: EdgeInsets.only(bottom: 5),
-                          child: Icon(Icons.list_alt)),
-                      label: 'Task'),
-                  BottomNavigationBarItem(
-                      icon: Padding(
-                          padding: EdgeInsets.only(bottom: 5),
-                          child: Icon(Icons.outlined_flag)),
-                      activeIcon: Padding(
-                          padding: EdgeInsets.only(bottom: 5),
-                          child: Icon(Icons.flag)),
-                      label: 'Prioritas'),
-                  BottomNavigationBarItem(
-                      icon: Padding(
-                          padding: EdgeInsets.only(bottom: 5),
-                          child: Icon(Icons.calendar_month_outlined)),
-                      activeIcon: Padding(
-                          padding: EdgeInsets.only(bottom: 5),
-                          child: Icon(Icons.calendar_month)),
-                      label: 'Kalender'),
-                  BottomNavigationBarItem(
-                      icon: Padding(
-                          padding: EdgeInsets.only(bottom: 5),
-                          child: Icon(Icons.timer_outlined)),
-                      activeIcon: Padding(
-                          padding: EdgeInsets.only(bottom: 5),
-                          child: Icon(Icons.timer)),
-                      label: 'Pomodoro'),
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.home_outlined),
+                    selectedIcon: Icon(Icons.home_rounded),
+                    label: 'Home',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.checklist_rounded),
+                    selectedIcon: Icon(Icons.fact_check_rounded),
+                    label: 'Task',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.flag_outlined),
+                    selectedIcon: Icon(Icons.flag_rounded),
+                    label: 'Prioritas',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.calendar_month_outlined),
+                    selectedIcon: Icon(Icons.calendar_month_rounded),
+                    label: 'Kalender',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.timer_outlined),
+                    selectedIcon: Icon(Icons.timer_rounded),
+                    label: 'Fokus',
+                  ),
                 ],
+                onDestinationSelected: (index) {
+                  if (index == currentIndex) return;
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => _screenFor(index)),
+                  );
+                },
               ),
             ),
-          );
-        });
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _screenFor(int index) {
+    return switch (index) {
+      0 => const BerandaScreen(),
+      1 => const TaskScreen(),
+      2 => const PriorityScreen(),
+      3 => const CalendarScreen(),
+      4 => const PomodoroScreen(),
+      _ => const BerandaScreen(),
+    };
   }
 }

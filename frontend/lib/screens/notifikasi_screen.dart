@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/notifikasi_model.dart';
 
@@ -37,13 +37,32 @@ class _NotificationScreenState extends State<NotificationScreen> {
         isRead: true),
   ];
 
+  String _getPriorityLabel(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high':
+      case 'tinggi':
+        return 'TINGGI';
+      case 'medium':
+      case 'sedang':
+        return 'SEDANG';
+      case 'low':
+      case 'rendah':
+        return 'RENDAH';
+      default:
+        return priority.toUpperCase();
+    }
+  }
+
   Color _getPriorityColor(String priority) {
-    switch (priority) {
-      case 'TINGGI':
+    switch (priority.toLowerCase()) {
+      case 'high':
+      case 'tinggi':
         return const Color(0xFFEF4444);
-      case 'SEDANG':
+      case 'medium':
+      case 'sedang':
         return const Color(0xFFF59E0B);
-      case 'RENDAH':
+      case 'low':
+      case 'rendah':
         return const Color(0xFF22C55E);
       default:
         return Colors.grey;
@@ -100,7 +119,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Header
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
                         child: Row(
@@ -145,7 +163,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       ),
                       const Divider(height: 1),
 
-                      // Daftar notifikasi
                       Flexible(
                         child: ListView.builder(
                           shrinkWrap: true,
@@ -167,7 +184,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                   color: notif.isRead
                                       ? Colors.grey.shade100
                                       : const Color(0xFF364C84)
-                                          .withOpacity(0.2),
+                                          .withValues(alpha: 0.2),
                                 ),
                               ),
                               child: Row(
@@ -207,7 +224,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                               ),
                                             ),
                                             const SizedBox(width: 4),
-                                            Text(notif.priority,
+                                            Text(_getPriorityLabel(notif.priority),
                                                 style: GoogleFonts.montserrat(
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.w600,
@@ -223,7 +240,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                         horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(
                                       color: _getTimeLabelColor(notif.timeLabel)
-                                          .withOpacity(0.1),
+                                          .withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(notif.timeLabel,
@@ -240,7 +257,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                         ),
                       ),
 
-                      // Tombol Lihat Aktivitas
                       Padding(
                         padding: const EdgeInsets.all(12),
                         child: ElevatedButton(
@@ -313,7 +329,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     fontSize: 11,
                     fontWeight: FontWeight.w600)),
           ),
-          // Tombol popup notifikasi
           IconButton(
             icon: Stack(
               children: [
@@ -370,11 +385,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     border: Border.all(
                       color: notif.isRead
                           ? Colors.grey.shade200
-                          : const Color(0xFF364C84).withOpacity(0.3),
+                          : const Color(0xFF364C84).withValues(alpha: 0.3),
                     ),
                     boxShadow: [
                       BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
+                          color: Colors.black.withValues(alpha: 0.03),
                           blurRadius: 8,
                           offset: const Offset(0, 2)),
                     ],
@@ -405,7 +420,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                 color: _getPriorityColor(notif.priority),
                                 shape: BoxShape.circle)),
                         const SizedBox(width: 4),
-                        Text(notif.priority,
+                        Text(_getPriorityLabel(notif.priority),
                             style: GoogleFonts.montserrat(
                                 color: _getPriorityColor(notif.priority),
                                 fontSize: 11,
@@ -417,7 +432,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                           horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                           color: _getTimeLabelColor(notif.timeLabel)
-                              .withOpacity(0.1),
+                              .withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8)),
                       child: Text(notif.timeLabel,
                           style: GoogleFonts.montserrat(
